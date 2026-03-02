@@ -1,0 +1,295 @@
+// Prisma Schema - Sistem Informasi SD IT Iqra 2 Kota Bengkulu
+// Database: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+// ============================================================
+// MODUL AUTENTIKASI & USER MANAGEMENT
+// ============================================================
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN_CMS
+  ADMIN_PPDB
+  KEPALA_SEKOLAH
+  KARYAWAN // Guru dan Staf
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(KARYAWAN)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relasi
+  employee       Employee?
+  posts          Post[]
+  pages          Page[]
+  uploadedMedia  Media[]
+
+  @@map("users")
+}
+
+// ============================================================
+// MODUL CMS (PROFIL SEKOLAH)
+// ============================================================
+
+enum PostStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  posts Post[]
+
+  @@map("categories")
+}
+
+model Post {
+  id          String     @id @default(cuid())
+  title       String
+  slug        String     @unique
+  excerpt     String?
+  content     String     // Rich text / HTML
+  coverImage  String?    // Path atau URL gambar
+  status      PostStatus @default(DRAFT)
+  publishedAt DateTime?
+
+  authorId    String
+  author      User       @relation(fields: [authorId], references: [id])
+
+  categoryId  String?
+  category    Category?  @relation(fields: [categoryId], references: [id])
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@map("posts")
+}
+
+model Page {
+  id        String     @id @default(cuid())
+  title     String
+  slug      String     @unique
+  content   String     // Rich text / HTML
+  status    PostStatus @default(DRAFT)
+  sortOrder Int        @default(0)
+
+  authorId  String
+  author    User       @relation(fields: [authorId], references: [id])
+
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@map("pages")
+}
+
+model Media {
+  id          String   @id @default(cuid())
+  filename    String
+  originalName String
+  path        String
+  url         String
+  mimeType    String
+  size        Int      // Ukuran file dalam bytes
+
+  uploadedById String
+  uploadedBy   User   @relation(fields: [uploadedById], references: [id])
+
+  createdAt   DateTime @default(now())
+
+  @@map("media")
+}
+
+// ============================================================
+// MODUL PPDB (PENERIMAAN SISWA BARU)
+// ============================================================
+
+enum RegistrationStatus {
+  PENDING     // Baru mendaftar, belum diverifikasi
+  VERIFYING   // Dokumen sedang diperiksa admin
+  ACCEPTED    // Diterima
+  REJECTED    // Ditolak
+}
+
+enum Gender {
+  L // Laki-laki
+  P // Perempuan
+}
+
+model AcademicYear {
+  id               String   @id @default(cuid())
+  name             String   @unique // Contoh: "2026/2027"
+  registrationStart DateTime
+  registrationEnd   DateTime
+  quota             Int      @default(0)
+  isActive          Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  registrations Registration[]
+
+  @@map("academic_years")
+}
+
+model Parent {
+  id          String   @id @default(cuid())
+  name        String
+  nik         String?  @unique
+  email       String   @unique
+  phone       String
+  address     String?
+  password    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  registrations Registration[]
+
+  @@map("parents")
+}
+
+model Registration {
+  id             String             @id @default(cuid())
+  registrationNo String             @unique // Nomor pendaftaran auto-generated
+
+  // Data Siswa
+  studentName    String
+  gender         Gender
+  birthPlace     String
+  birthDate      DateTime
+  religion       String?
+  address        String?
+  previousSchool String?            // TK asal (opsional)
+  photo          String?            // Path foto siswa
+
+  // Dokumen (path file upload)
+  docBirthCert   String?            // Akte kelahiran
+  docKartuKeluarga String?          // KK
+  docIjazahTK    String?            // Ijazah TK (opsional)
+
+  status         RegistrationStatus @default(PENDING)
+  rejectReason   String?            // Alasan penolakan (opsional)
+  verifiedAt     DateTime?
+
+  // Relasi
+  parentId       String
+  parent         Parent            @relation(fields: [parentId], references: [id])
+
+  academicYearId String
+  academicYear   AcademicYear      @relation(fields: [academicYearId], references: [id])
+
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@map("registrations")
+}
+
+// ============================================================
+// MODUL KEHADIRAN (ABSENSI GURU & KARYAWAN)
+// ============================================================
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+  RESIGNED
+}
+
+model Employee {
+  id          String         @id @default(cuid())
+  nip         String?        @unique // Nomor Induk Pegawai
+  position    String         // Jabatan / Posisi
+  department  String?        // Divisi
+  joinDate    DateTime
+  status      EmployeeStatus @default(ACTIVE)
+  phone       String?
+  address     String?
+
+  // Relasi ke User (untuk login)
+  userId      String         @unique
+  user        User           @relation(fields: [userId], references: [id])
+
+  attendanceLogs AttendanceLog[]
+  leaveRequests  LeaveRequest[]
+
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@map("employees")
+}
+
+enum AttendanceType {
+  HADIR
+  IZIN
+  SAKIT
+  ALPHA  // Tanpa keterangan
+  LIBUR
+}
+
+model AttendanceLog {
+  id          String         @id @default(cuid())
+  date        DateTime       @db.Date
+  clockIn     DateTime?
+  clockOut    DateTime?
+  type        AttendanceType @default(HADIR)
+  note        String?
+
+  employeeId  String
+  employee    Employee       @relation(fields: [employeeId], references: [id])
+
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@unique([employeeId, date]) // Satu karyawan satu log per hari
+  @@map("attendance_logs")
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum LeaveType {
+  IZIN     // Izin biasa
+  SAKIT    // Sakit (dengan surat dokter)
+  CUTI     // Cuti tahunan
+  DINAS    // Perjalanan dinas
+}
+
+model LeaveRequest {
+  id          String      @id @default(cuid())
+  type        LeaveType
+  startDate   DateTime    @db.Date
+  endDate     DateTime    @db.Date
+  reason      String
+  attachment  String?     // Surat keterangan dokter (opsional)
+  status      LeaveStatus @default(PENDING)
+  approverNote String?    // Catatan dari approver
+
+  employeeId  String
+  employee    Employee    @relation(fields: [employeeId], references: [id])
+
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@map("leave_requests")
+}
