@@ -1,0 +1,15 @@
+# render.yaml - Konfigurasi deployment Render.com untuk backend
+# File ini berada di root repo backend (setelah repo dipisah dari monorepo)
+
+services:
+  - type: web
+    name: sditiqra2-backend
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Set variabel ini secara manual di Render Dashboard:
+      # DATABASE_URL, JWT_SECRET, JWT_EXPIRES_IN,
+      # FRONTEND_URL, CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET

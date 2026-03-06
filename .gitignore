@@ -1,6 +1,29 @@
+# Dependencies
 node_modules/
+
+# Environment variables (JANGAN pernah commit file ini!)
 .env
-uploads/
-generated/
+.env.local
+.env.production
+
+# Upload files (lokal saja, production pakai Cloudinary)
+src/uploads/
+uploads
+
+# Prisma generated client
+# (akan di-generate ulang saat npm install via postinstall)
+# node_modules/.prisma sudah tercakup di atas
+
+# Build artifacts
 dist/
-*.log
+build/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+*.swp
+*.swo
+.vercel

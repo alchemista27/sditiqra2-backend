@@ -123,7 +123,7 @@ exports.getMe = async (req, res) => {
     if (type === 'parent') {
       account = await prisma.parent.findUnique({
         where: { id },
-        select: { id: true, name: true, email: true, phone: true, address: true },
+        select: { id: true, name: true, email: true, phone: true },
       });
     } else {
       account = await prisma.user.findUnique({

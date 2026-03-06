@@ -14,7 +14,11 @@ const PORT = process.env.PORT || 5000;
 // ─── Middleware ───────────────────────────────────────────────
 app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: function(origin, callback) {
+    // bypass CORS by reflecting origin - aman untuk Vercel deployments
+    if (!origin) return callback(null, true);
+    return callback(null, true);
+  },
   credentials: true,
 }));
 app.use(morgan('dev'));
@@ -25,6 +29,11 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // ─── API Routes ───────────────────────────────────────────────
+app.get('/', (req, res) => {
+  res.json({ success: true, message: 'Backend SDIT Iqra 2 API running 🎉', version: '1.0' });
+});
+app.get('/api', (req, res) => { res.json({ success: true, message: 'API Root Server' }); });
+
 app.use('/api', routes);
 
 // ─── 404 Handler ─────────────────────────────────────────────

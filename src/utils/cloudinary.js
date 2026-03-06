@@ -9,16 +9,24 @@ cloudinary.config({
 });
 
 /**
- * Buat storage Cloudinary untuk multer berdasarkan nama folder
+ * Buat storage Cloudinary untuk multer berdasarkan nama folder.
+ * Mendukung gambar (jpg/png/webp) dan dokumen (pdf).
  */
 const makeCloudinaryStorage = (folder) =>
   new CloudinaryStorage({
     cloudinary,
-    params: {
-      folder: `sditiqra2/${folder}`,
-      allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
-      transformation: [{ quality: 'auto', fetch_format: 'auto' }],
+    params: async (req, file) => {
+      const isPdf = file.mimetype === 'application/pdf';
+      return {
+        folder: `sditiqra2/${folder}`,
+        resource_type: isPdf ? 'raw' : 'image',
+        allowed_formats: isPdf
+          ? ['pdf']
+          : ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+        ...(isPdf ? {} : { transformation: [{ quality: 'auto', fetch_format: 'auto' }] }),
+      };
     },
   });
 
 module.exports = { cloudinary, makeCloudinaryStorage };
+

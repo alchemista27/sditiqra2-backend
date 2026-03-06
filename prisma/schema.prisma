@@ -124,11 +124,19 @@ model Media {
 // MODUL PPDB (PENERIMAAN SISWA BARU)
 // ============================================================
 
+// Status registrasi mengikuti alur PPDB lengkap sekolah
 enum RegistrationStatus {
-  PENDING     // Baru mendaftar, belum diverifikasi
-  VERIFYING   // Dokumen sedang diperiksa admin
-  ACCEPTED    // Diterima
-  REJECTED    // Ditolak
+  PENDING_PAYMENT        // Akun dibuat, menunggu pembayaran
+  PAYMENT_UPLOADED       // Bukti transfer diupload, menunggu verifikasi admin
+  PAYMENT_VERIFIED       // Pembayaran diverifikasi, orang tua bisa isi formulir
+  FORM_SUBMITTED         // Formulir & semua berkas sudah disubmit orang tua
+  ADMIN_REVIEW           // Admin sedang melakukan seleksi administrasi
+  ADMIN_PASSED           // Lulus seleksi administrasi
+  CLINIC_LETTER_UPLOADED // Surat keterangan dari IMC sudah diupload
+  OBSERVATION_SCHEDULED  // Orang tua sudah memilih jadwal observasi
+  OBSERVATION_DONE       // Observasi sudah dilaksanakan, menunggu keputusan
+  ACCEPTED               // Calon siswa diterima
+  REJECTED               // Ditolak (bisa terjadi di tahap manapun)
 }
 
 enum Gender {
@@ -136,71 +144,180 @@ enum Gender {
   P // Perempuan
 }
 
-model AcademicYear {
-  id               String   @id @default(cuid())
-  name             String   @unique // Contoh: "2026/2027"
-  registrationStart DateTime
-  registrationEnd   DateTime
-  quota             Int      @default(0)
-  isActive          Boolean  @default(false)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  registrations Registration[]
-
-  @@map("academic_years")
-}
-
+// Model orang tua / wali pendaftar (terpisah dari model User admin)
 model Parent {
-  id          String   @id @default(cuid())
-  name        String
-  nik         String?  @unique
-  email       String   @unique
-  phone       String
-  address     String?
-  password    String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  phone     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   registrations Registration[]
 
   @@map("parents")
 }
 
+// Tahun ajaran — mengatur kuota, biaya pendaftaran, periode, dan relasi ke kelas & slot observasi
+model AcademicYear {
+  id                String   @id @default(cuid())
+  name              String   @unique // Contoh: "2026/2027"
+  registrationStart DateTime
+  registrationEnd   DateTime
+  quota             Int      @default(0)
+  registrationFee   Int      @default(300000) // Biaya pendaftaran dalam rupiah
+  isActive          Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  registrations    Registration[]
+  observationSlots ObservationSlot[]
+  classrooms       Classroom[]
+
+  @@map("academic_years")
+}
+
+// Registrasi pendaftaran siswa baru — model utama PPDB
 model Registration {
   id             String             @id @default(cuid())
-  registrationNo String             @unique // Nomor pendaftaran auto-generated
+  registrationNo String             @unique // Auto-generated: PPDB-26-XXXX
 
-  // Data Siswa
-  studentName    String
-  gender         Gender
-  birthPlace     String
-  birthDate      DateTime
-  religion       String?
-  address        String?
-  previousSchool String?            // TK asal (opsional)
-  photo          String?            // Path foto siswa
-
-  // Dokumen (path file upload)
-  docBirthCert   String?            // Akte kelahiran
-  docKartuKeluarga String?          // KK
-  docIjazahTK    String?            // Ijazah TK (opsional)
-
-  status         RegistrationStatus @default(PENDING)
-  rejectReason   String?            // Alasan penolakan (opsional)
-  verifiedAt     DateTime?
-
-  // Relasi
-  parentId       String
-  parent         Parent            @relation(fields: [parentId], references: [id])
-
+  // ── Relasi Utama ──
   academicYearId String
   academicYear   AcademicYear      @relation(fields: [academicYearId], references: [id])
+  parentId       String
+  parent         Parent            @relation(fields: [parentId], references: [id])
+  status         RegistrationStatus @default(PENDING_PAYMENT)
 
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
+  // ── Tahap 1: Pembayaran Rp 300.000 ──
+  paymentProof      String?   // URL Cloudinary bukti transfer
+  paymentNote       String?   // Catatan dari orang tua saat upload bukti
+  paymentVerifiedAt DateTime?
+  paymentVerifiedBy String?   // ID admin yang memverifikasi
+
+  // ── Tahap 2: Biodata Calon Siswa ──
+  studentName      String?
+  nickName         String?    // Nama panggilan
+  gender           Gender?
+  birthPlace       String?
+  birthDate        DateTime?
+  nisn             String?    // Nomor Induk Siswa Nasional (opsional)
+  religion         String?
+  address          String?    // Alamat lengkap siswa
+  transport        String?    // Alat transportasi ke sekolah
+  siblingCount     Int?       // Jumlah saudara kandung
+  hobby            String?
+  aspiration       String?    // Cita-cita
+  hasSpecialNeeds  Boolean    @default(false)
+  specialNeedsDesc String?    // Keterangan kebutuhan khusus (jika ada)
+
+  // ── Tahap 2: Biodata Ayah ──
+  fatherName    String?
+  fatherNik     String?
+  fatherJob     String?
+  fatherIncome  String?  // Range penghasilan, contoh: "3000000-5000000"
+  fatherPhone   String?
+  fatherAddress String?
+
+  // ── Tahap 2: Biodata Ibu ──
+  motherName    String?
+  motherNik     String?
+  motherJob     String?
+  motherIncome  String?
+  motherPhone   String?
+  motherAddress String?
+
+  // ── Tahap 2: Biodata Wali (opsional, diisi jika bukan ayah/ibu) ──
+  guardianName     String?
+  guardianNik      String?
+  guardianJob      String?
+  guardianIncome   String?
+  guardianPhone    String?
+  guardianRelation String?  // Hubungan dengan siswa, contoh: "Kakak", "Paman"
+
+  // ── Tahap 3: Upload Berkas ──
+  docPhoto         String?  // Pasfoto 3x4 warna (URL Cloudinary)
+  docTkCert        String?  // Surat keterangan TK/PAUD asal
+  docBirthCert     String?  // Scan akte kelahiran
+  docKartuKeluarga String?  // Scan kartu keluarga
+  docKtpFather     String?  // Scan KTP ayah
+  docKtpMother     String?  // Scan KTP ibu
+
+  formSubmittedAt  DateTime? // Waktu submit formulir akhir
+
+  // ── Tahap 4: Seleksi Administrasi ──
+  adminNote       String?   // Catatan admin saat review
+  adminReviewedAt DateTime?
+  adminReviewedBy String?   // ID admin yang mereview
+
+  // ── Tahap 5: Pemeriksaan Klinik IMC ──
+  clinicReferralUrl String?  // URL PDF surat pengantar klinik (di-generate sistem)
+  clinicReferralNo  String?  // Nomor surat pengantar yang di-generate
+  docClinicCert     String?  // URL surat keterangan kesehatan dari IMC (diupload ortu)
+  clinicCertUploadedAt DateTime?
+
+  // ── Tahap 6: Observasi ──
+  observationSlotId String?
+  observationSlot   ObservationSlot? @relation(fields: [observationSlotId], references: [id])
+  observationNote   String?   // Catatan hasil observasi dari admin
+  observationResult String?   // "PASSED" atau "FAILED"
+  observedAt        DateTime?
+
+  // ── Tahap 7: Penetapan Kelas ──
+  classroomId String?
+  classroom   Classroom? @relation(fields: [classroomId], references: [id])
+
+  // ── Status Penolakan ──
+  rejectReason String? // Alasan penolakan (diisi saat status = REJECTED)
+  rejectedAt   DateTime?
+  rejectedBy   String?  // ID admin
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("registrations")
+}
+
+// Slot jadwal observasi — dikelola admin, dipilih oleh orang tua
+model ObservationSlot {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+  startTime String   // Contoh: "08:00"
+  endTime   String   // Contoh: "10:00"
+  quota     Int      @default(10)
+  isActive  Boolean  @default(true)
+  note      String?  // Catatan/instruksi untuk orang tua (opsional)
+
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  registrations Registration[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("observation_slots")
+}
+
+// Kelas paralel — dikelola admin, untuk assign siswa diterima
+model Classroom {
+  id          String @id @default(cuid())
+  name        String // Contoh: "1A", "1B", "1C", "1D"
+  grade       Int    @default(1)
+  maxStudents Int    @default(30)
+  homeroomTeacher String? // Nama wali kelas (opsional, bisa diisi nanti)
+
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  registrations Registration[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("classrooms")
 }
 
 // ============================================================
@@ -222,6 +339,7 @@ model Employee {
   status      EmployeeStatus @default(ACTIVE)
   phone       String?
   address     String?
+  faceEmbedding String?      // JSON string face embedding untuk verifikasi (opsional server-side backup)
 
   // Relasi ke User (untuk login)
   userId      String         @unique
@@ -242,24 +360,87 @@ enum AttendanceType {
   SAKIT
   ALPHA  // Tanpa keterangan
   LIBUR
+  CUTI
+  DINAS
 }
 
 model AttendanceLog {
-  id          String         @id @default(cuid())
-  date        DateTime       @db.Date
-  clockIn     DateTime?
-  clockOut    DateTime?
-  type        AttendanceType @default(HADIR)
-  note        String?
+  id              String         @id @default(cuid())
+  date            DateTime       @db.Date
+  clockIn         DateTime?
+  clockOut        DateTime?
+  type            AttendanceType @default(HADIR)
+  note            String?
 
-  employeeId  String
-  employee    Employee       @relation(fields: [employeeId], references: [id])
+  // GPS Data
+  clockInLat      Float?         // Latitude saat clock in
+  clockInLng      Float?         // Longitude saat clock in
+  clockOutLat     Float?         // Latitude saat clock out
+  clockOutLng     Float?         // Longitude saat clock out
+  clockInDistance  Float?         // Jarak dari sekolah (meter) saat clock in
+  clockOutDistance Float?         // Jarak dari sekolah (meter) saat clock out
 
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  // Anti-Fake GPS
+  isMockGps       Boolean        @default(false) // Flag fake GPS terdeteksi
+
+  // Face Recognition
+  faceConfidence  Float?         // Confidence score 0-1
+  clockInSelfie   String?        // URL/path foto selfie clock in
+  clockOutSelfie  String?        // URL/path foto selfie clock out
+
+  // Status
+  isLate          Boolean        @default(false) // Terlambat berdasarkan threshold
+  anomalyFlag     String?        // "OUT_OF_RADIUS" | "MOCK_GPS" | "LOW_FACE_CONFIDENCE" | null
+  anomalyNote     String?        // Catatan anomali tambahan
+
+  employeeId      String
+  employee        Employee       @relation(fields: [employeeId], references: [id])
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
   @@unique([employeeId, date]) // Satu karyawan satu log per hari
   @@map("attendance_logs")
+}
+
+// ── Konfigurasi Geofencing & Jam Kerja ──
+model AttendanceConfig {
+  id              String   @id @default(cuid())
+  schoolName      String   @default("SDIT Iqra 2 Kota Bengkulu")
+  schoolLatitude  Float    @default(-3.7928)   // Koordinat default Bengkulu
+  schoolLongitude Float    @default(102.2608)
+  radiusMeters    Int      @default(100)        // Radius geofencing (meter)
+  clockInStart    String   @default("06:30")    // Mulai bisa clock in
+  clockInEnd      String   @default("08:00")    // Batas akhir clock in
+  clockOutStart   String   @default("14:00")    // Mulai bisa clock out
+  clockOutEnd     String   @default("17:00")    // Batas akhir clock out
+  lateThreshold   String   @default("07:15")    // Lewat ini = terlambat
+  minFaceConfidence Float  @default(0.75)       // Minimum confidence face recognition
+  allowMockGps    Boolean  @default(false)       // Izinkan mock GPS (untuk testing)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("attendance_configs")
+}
+
+// ── Hari Libur ──
+enum HolidayType {
+  NATIONAL     // Hari libur nasional Indonesia
+  SCHOOL       // Libur sekolah (liburan semester, dsb)
+}
+
+model Holiday {
+  id          String      @id @default(cuid())
+  date        DateTime    @db.Date
+  name        String      // "Hari Raya Idul Fitri", "Libur Semester 1"
+  type        HolidayType @default(NATIONAL)
+  isRecurring Boolean     @default(false) // Apakah berulang tiap tahun (misal: Tahun Baru)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@unique([date, name]) // Tidak boleh duplikat tanggal+nama
+  @@map("holidays")
 }
 
 enum LeaveStatus {
@@ -276,20 +457,22 @@ enum LeaveType {
 }
 
 model LeaveRequest {
-  id          String      @id @default(cuid())
-  type        LeaveType
-  startDate   DateTime    @db.Date
-  endDate     DateTime    @db.Date
-  reason      String
-  attachment  String?     // Surat keterangan dokter (opsional)
-  status      LeaveStatus @default(PENDING)
-  approverNote String?    // Catatan dari approver
+  id           String      @id @default(cuid())
+  type         LeaveType
+  startDate    DateTime    @db.Date
+  endDate      DateTime    @db.Date
+  reason       String
+  attachment   String?     // URL bukti/surat keterangan di Cloudinary
+  status       LeaveStatus @default(PENDING)
+  approverNote String?     // Catatan dari approver
+  approvedBy   String?     // ID admin yang approve/reject
+  approvedAt   DateTime?   // Waktu approve/reject
 
-  employeeId  String
-  employee    Employee    @relation(fields: [employeeId], references: [id])
+  employeeId   String
+  employee     Employee    @relation(fields: [employeeId], references: [id])
 
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
 
   @@map("leave_requests")
 }
