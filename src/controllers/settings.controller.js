@@ -1,17 +1,16 @@
 // src/controllers/settings.controller.js
 // Mengelola Site Settings (key-value store untuk konfigurasi situs)
 const prisma = require('../lib/prisma');
+const { cloudinary } = require('../utils/cloudinary');
 const { successResponse, errorResponse } = require('../utils/response');
 
 /**
  * GET /api/cms/settings
  * Publik — mengembalikan semua settings sebagai satu objek { key: value, ... }
- * aman ditampilkan ke publik karena tidak ada data sensitif
  */
 exports.getAll = async (req, res) => {
   try {
     const rows = await prisma.siteSetting.findMany();
-    // Ubah array [{ key, value }] menjadi objek { key: value }
     const settings = rows.reduce((acc, row) => {
       acc[row.key] = row.value;
       return acc;
@@ -24,7 +23,6 @@ exports.getAll = async (req, res) => {
 
 /**
  * GET /api/cms/settings/:key
- * Publik — ambil satu setting berdasarkan key
  */
 exports.getOne = async (req, res) => {
   try {
@@ -41,7 +39,6 @@ exports.getOne = async (req, res) => {
 /**
  * PUT /api/cms/settings (Admin only)
  * Body: { key: value, key2: value2, ... }
- * Batch upsert — update banyak settings sekaligus
  */
 exports.updateMany = async (req, res) => {
   try {
@@ -50,7 +47,6 @@ exports.updateMany = async (req, res) => {
       return errorResponse(res, 'Body harus berupa objek { key: value, ... }', 400);
     }
 
-    // Jalankan semua upsert dalam satu transaksi
     const operations = Object.entries(updates).map(([key, value]) =>
       prisma.siteSetting.upsert({
         where: { key },
@@ -61,7 +57,6 @@ exports.updateMany = async (req, res) => {
 
     await prisma.$transaction(operations);
 
-    // Kembalikan semua settings terbaru
     const rows = await prisma.siteSetting.findMany();
     const settings = rows.reduce((acc, row) => {
       acc[row.key] = row.value;
@@ -75,17 +70,45 @@ exports.updateMany = async (req, res) => {
 };
 
 /**
+ * Upload file ke Cloudinary via buffer stream
+ */
+async function uploadToCloudinary(buffer, folder, publicId) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: `sditiqra2/${folder}`,
+        public_id: publicId,
+        overwrite: true,
+        resource_type: 'image',
+        transformation: [{ quality: 'auto', fetch_format: 'auto' }],
+      },
+      (error, result) => { if (error) reject(error); else resolve(result); }
+    );
+    stream.end(buffer);
+  });
+}
+
+/**
  * POST /api/cms/settings/upload-logo (Admin only)
- * Upload logo sekolah — file di-handle multer, URL disimpan ke SiteSetting
+ * Upload logo ke Cloudinary — URL Cloudinary disimpan ke SiteSetting
  */
 exports.uploadLogo = async (req, res) => {
   try {
     if (!req.file) return errorResponse(res, 'File logo wajib diupload.', 400);
 
-    // Di development: path lokal. Di production: URL Cloudinary dari req.file.path
-    const logoUrl = req.file.path?.startsWith('http')
-      ? req.file.path  // Cloudinary
-      : `/uploads/settings/${req.file.filename}`; // Disk lokal
+    let logoUrl;
+
+    // Jika sudah ada Cloudinary URL dari multer-storage-cloudinary
+    if (req.file.path?.startsWith('http')) {
+      logoUrl = req.file.path;
+    } else if (req.file.buffer) {
+      // Upload via stream (memoryStorage)
+      const result = await uploadToCloudinary(req.file.buffer, 'settings', 'site_logo');
+      logoUrl = result.secure_url;
+    } else {
+      // Fallback: path lokal (hanya jika tidak ada koneksi Cloudinary)
+      logoUrl = `/uploads/settings/${req.file.filename}`;
+    }
 
     await prisma.siteSetting.upsert({
       where: { key: 'site_logo' },
@@ -101,15 +124,21 @@ exports.uploadLogo = async (req, res) => {
 
 /**
  * POST /api/cms/settings/upload-favicon (Admin only)
- * Upload favicon
  */
 exports.uploadFavicon = async (req, res) => {
   try {
     if (!req.file) return errorResponse(res, 'File favicon wajib diupload.', 400);
 
-    const faviconUrl = req.file.path?.startsWith('http')
-      ? req.file.path
-      : `/uploads/settings/${req.file.filename}`;
+    let faviconUrl;
+
+    if (req.file.path?.startsWith('http')) {
+      faviconUrl = req.file.path;
+    } else if (req.file.buffer) {
+      const result = await uploadToCloudinary(req.file.buffer, 'settings', 'site_favicon');
+      faviconUrl = result.secure_url;
+    } else {
+      faviconUrl = `/uploads/settings/${req.file.filename}`;
+    }
 
     await prisma.siteSetting.upsert({
       where: { key: 'site_favicon' },

@@ -104,13 +104,15 @@ model Page {
 }
 
 model Media {
-  id          String   @id @default(cuid())
-  filename    String
+  id           String   @id @default(cuid())
+  filename     String
   originalName String
-  path        String
-  url         String
-  mimeType    String
-  size        Int      // Ukuran file dalam bytes
+  path         String
+  url          String
+  mimeType     String
+  size         Int      // Ukuran file dalam bytes
+  cloudinaryId String?  // Cloudinary public_id (jika diupload ke Cloudinary)
+  cloudinaryUrl String? // Cloudinary secure_url
 
   uploadedById String
   uploadedBy   User   @relation(fields: [uploadedById], references: [id])
@@ -119,6 +121,23 @@ model Media {
 
   @@map("media")
 }
+
+// ─── GALLERY (Galeri Website Publik) ─────────────────────────
+model GalleryItem {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  imageUrl    String   // Cloudinary secure_url atau path lokal
+  cloudinaryId String? // Cloudinary public_id untuk proses hapus
+  order       Int      @default(0)
+  isActive    Boolean  @default(true)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("gallery_items")
+}
+
 
 // ============================================================
 // MODUL PPDB (PENERIMAAN SISWA BARU)
@@ -511,6 +530,10 @@ model MenuItem {
   order       Int      @default(0)        // Urutan tampil (makin kecil makin depan)
   isActive    Boolean  @default(true)     // Tampilkan atau sembunyikan
   openInNewTab Boolean @default(false)    // Buka di tab baru (_blank)
+
+  parentId    String?                     // ID parent item jika ini adalah submenu
+  parent      MenuItem?  @relation("MenuHierarchy", fields: [parentId], references: [id])
+  children    MenuItem[] @relation("MenuHierarchy")
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

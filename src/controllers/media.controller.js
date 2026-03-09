@@ -1,79 +1,137 @@
-// src/controllers/media.controller.js
+// src/controllers/media.controller.js - Cloudinary Media Library
+const { cloudinary } = require('../utils/cloudinary');
 const prisma = require('../lib/prisma');
-const path = require('path');
-const fs = require('fs');
 const { successResponse, errorResponse } = require('../utils/response');
 
 /**
- * POST /api/cms/media - Upload satu atau lebih file
+ * POST /api/cms/media - Upload satu file ke Cloudinary
+ * Menggunakan multer memoryStorage untuk piping ke Cloudinary stream
  */
 exports.upload = async (req, res) => {
   try {
-    if (!req.files || req.files.length === 0) {
-      return errorResponse(res, 'Tidak ada file yang diupload.', 400);
-    }
+    if (!req.file) return errorResponse(res, 'Tidak ada file yang diupload.', 400);
 
-    const mediaItems = req.files.map((file) => ({
-      filename: file.filename,
-      originalName: file.originalname,
-      path: file.path,
-      url: `/${file.path.replace(/\\/g, '/')}`,
-      mimeType: file.mimetype,
-      size: file.size,
-      uploadedById: req.user.id,
-    }));
-
-    await prisma.media.createMany({ data: mediaItems });
-
-    const created = await prisma.media.findMany({
-      where: { filename: { in: mediaItems.map(m => m.filename) } },
-      orderBy: { createdAt: 'desc' },
+    const result = await new Promise((resolve, reject) => {
+      const folder = req.body.folder || 'media';
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: `sditiqra2/${folder}`,
+          resource_type: 'auto',
+          transformation: req.file.mimetype.startsWith('image/')
+            ? [{ quality: 'auto', fetch_format: 'auto' }]
+            : undefined,
+        },
+        (error, result) => { if (error) reject(error); else resolve(result); }
+      );
+      stream.end(req.file.buffer);
     });
 
-    return successResponse(res, created, 'File berhasil diupload.', 201);
+    // Juga simpan ke database Media untuk history
+    const media = await prisma.media.create({
+      data: {
+        filename: result.public_id,
+        originalName: req.file.originalname,
+        path: result.public_id,
+        url: result.secure_url,
+        mimeType: req.file.mimetype,
+        size: req.file.size,
+        cloudinaryId: result.public_id,
+        cloudinaryUrl: result.secure_url,
+        uploadedById: req.user.id,
+      },
+    });
+
+    return successResponse(res, {
+      id: media.id,
+      url: result.secure_url,
+      publicId: result.public_id,
+      format: result.format,
+      width: result.width,
+      height: result.height,
+      bytes: result.bytes,
+    }, 'File berhasil diupload.', 201);
   } catch (error) {
     return errorResponse(res, 'Gagal mengupload file.', 500, error);
   }
 };
 
 /**
- * GET /api/cms/media?page=1&limit=20
+ * GET /api/cms/media?folder=media&page=1&limit=30
+ * Mengambil resource langsung dari Cloudinary API
  */
 exports.getAll = async (req, res) => {
   try {
-    const { page = 1, limit = 20 } = req.query;
-    const skip = (Number(page) - 1) * Number(limit);
+    const { folder = 'sditiqra2', next_cursor, max_results = 30 } = req.query;
 
-    const [total, media] = await Promise.all([
-      prisma.media.count(),
-      prisma.media.findMany({
-        orderBy: { createdAt: 'desc' },
-        skip, take: Number(limit),
-        include: { uploadedBy: { select: { name: true } } },
-      }),
-    ]);
+    const result = await cloudinary.api.resources({
+      type: 'upload',
+      prefix: folder,
+      resource_type: 'image',
+      max_results: Number(max_results),
+      next_cursor: next_cursor || undefined,
+    });
+
+    const items = result.resources.map(r => ({
+      publicId: r.public_id,
+      url: r.secure_url,
+      format: r.format,
+      width: r.width,
+      height: r.height,
+      bytes: r.bytes,
+      createdAt: r.created_at,
+      folder: r.folder,
+      displayName: r.display_name || r.public_id.split('/').pop(),
+    }));
 
     return res.json({
-      success: true, data: media,
-      pagination: { page: Number(page), limit: Number(limit), total, totalPages: Math.ceil(total / Number(limit)) },
+      success: true,
+      data: items,
+      nextCursor: result.next_cursor || null,
+      totalCount: result.total_count || items.length,
     });
   } catch (error) {
-    return errorResponse(res, 'Gagal mengambil media.', 500, error);
+    // Fallback: jika Cloudinary API credentials tidak diset, query DB
+    if (error.error?.http_code === 401 || error.name === 'Error') {
+      try {
+        const { page = 1, limit = 30 } = req.query;
+        const skip = (Number(page) - 1) * Number(limit);
+        const [total, media] = await Promise.all([
+          prisma.media.count(),
+          prisma.media.findMany({ orderBy: { createdAt: 'desc' }, skip, take: Number(limit) }),
+        ]);
+        return res.json({ success: true, data: media, pagination: { page: Number(page), total, totalPages: Math.ceil(total / Number(limit)) } });
+      } catch { /* ignore */ }
+    }
+    return errorResponse(res, 'Gagal mengambil media dari Cloudinary.', 500, error);
   }
 };
 
 /**
- * DELETE /api/cms/media/:id - Hapus file dari disk dan database
+ * GET /api/cms/media/folders — daftar folder
+ */
+exports.getFolders = async (req, res) => {
+  try {
+    const result = await cloudinary.api.sub_folders('sditiqra2');
+    return successResponse(res, result.folders || []);
+  } catch (error) {
+    return successResponse(res, []);
+  }
+};
+
+/**
+ * DELETE /api/cms/media?id=sditiqra2/folder/public_id — hapus dari Cloudinary + DB
+ * Menggunakan query param karena publicId bisa mengandung slash
  */
 exports.remove = async (req, res) => {
   try {
-    const media = await prisma.media.findUnique({ where: { id: req.params.id } });
-    if (!media) return errorResponse(res, 'Media tidak ditemukan.', 404);
+    const publicId = req.query.id || req.body.publicId;
+    if (!publicId) return errorResponse(res, 'publicId wajib disertakan.', 400);
 
-    // Hapus file dari disk
-    if (fs.existsSync(media.path)) fs.unlinkSync(media.path);
+    await cloudinary.uploader.destroy(publicId).catch(() => {});
 
-    await prisma.media.delete({ where: { id: media.id } });
+    // Hapus dari DB jika ada
+    await prisma.media.deleteMany({ where: { cloudinaryId: publicId } }).catch(() => {});
+
     return successResponse(res, null, 'Media berhasil dihapus.');
   } catch (error) {
     return errorResponse(res, 'Gagal menghapus media.', 500, error);
