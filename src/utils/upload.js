@@ -51,6 +51,7 @@ if (IS_PRODUCTION) {
       }
       if (file.fieldname === 'attachment') folder = 'uploads/leave';
       if (['logo', 'favicon'].includes(file.fieldname)) folder = 'uploads/settings';
+      if (file.fieldname === 'selfie') folder = 'uploads/attendance/selfies';
 
       ensureDir(folder);
       cb(null, folder);

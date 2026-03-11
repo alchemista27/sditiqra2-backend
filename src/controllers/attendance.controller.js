@@ -52,6 +52,25 @@ exports.getConfig = async (req, res) => {
   }
 };
 
+// ─── POST /attendance/upload-selfie ──────────────────────────
+// Upload foto selfie dari web-based attendance
+exports.uploadSelfie = async (req, res) => {
+  try {
+    if (!req.file) {
+      return errorResponse(res, 'File selfie tidak ditemukan.', 400);
+    }
+    
+    // File path yang dikembalikan ke frontend
+    const url = process.env.NODE_ENV === 'production' && req.file.path
+      ? req.file.path // Cloudinary URL
+      : `/uploads/attendance/selfies/${req.file.filename}`; // Local path
+
+    successResponse(res, { url }, 'Selfie berhasil diunggah', 201);
+  } catch (err) {
+    errorResponse(res, err.message, 500);
+  }
+};
+
 // ─── PUT /attendance/config ──────────────────────────────────
 // Admin update konfigurasi geofencing & jam kerja
 exports.updateConfig = async (req, res) => {

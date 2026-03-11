@@ -3,12 +3,14 @@ const express = require('express');
 const router = express.Router();
 const attendanceController = require('../controllers/attendance.controller');
 const { authenticate, authorize } = require('../middleware/auth');
+const upload = require('../utils/upload');
 
 // ─── Semua routes attendance perlu authentication ─────────────
 router.use(authenticate);
 
 // ─── KARYAWAN (Guru & Staf) ────────────────────────────────
 router.get('/config', attendanceController.getConfig);
+router.post('/upload-selfie', upload.single('selfie'), attendanceController.uploadSelfie);
 router.post('/clock-in', attendanceController.clockIn);
 router.post('/clock-out', attendanceController.clockOut);
 router.get('/my-logs', attendanceController.getMyLogs);

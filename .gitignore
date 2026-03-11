@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+package-lock.json
 
 # Environment variables (JANGAN pernah commit file ini!)
 .env
@@ -9,6 +10,7 @@ node_modules/
 # Upload files (lokal saja, production pakai Cloudinary)
 src/uploads/
 uploads
+testsprite_tests/
 
 # Prisma generated client
 # (akan di-generate ulang saat npm install via postinstall)
