@@ -29,6 +29,24 @@ const documentsUpload = upload.fields([
 
 
 // ═══════════════════════════════════════════════════════════════
+// PENGATURAN PPDB (PUBLIK: GET, ADMIN: PUT)
+// ═══════════════════════════════════════════════════════════════
+
+// Publik: ambil pengaturan PPDB (info rekening bank, dll)
+router.get('/settings', async (req, res) => {
+  try {
+    const keys = ['ppdb_bank_name', 'ppdb_account_no', 'ppdb_account_name'];
+    const rows = await prisma.siteSetting.findMany({ where: { key: { in: keys } } });
+    const settings = rows.reduce((acc, row) => { acc[row.key] = row.value; return acc; }, {});
+    return res.json({ success: true, data: settings });
+  } catch (err) {
+    console.error('[PPDB/GetSettings]', err);
+    return errorResponse(res, 'Gagal mengambil pengaturan PPDB.', 500);
+  }
+});
+
+
+// ═══════════════════════════════════════════════════════════════
 // TAHUN AJARAN (PUBLIK & ADMIN)
 // ═══════════════════════════════════════════════════════════════
 
@@ -126,6 +144,33 @@ router.post('/observation-slots/book',   authenticateParent, ppdbController.book
 
 const adminAuth = [authenticate, authorize('SUPER_ADMIN', 'ADMIN_PPDB')];
 const adminViewAuth = [authenticate, authorize('SUPER_ADMIN', 'ADMIN_PPDB', 'KEPALA_SEKOLAH')];
+
+// Pengaturan PPDB (admin)
+router.put('/admin/settings', ...adminAuth, async (req, res) => {
+  try {
+    const allowedKeys = ['ppdb_bank_name', 'ppdb_account_no', 'ppdb_account_name'];
+    const updates = req.body;
+    if (!updates || typeof updates !== 'object') {
+      return errorResponse(res, 'Body harus berupa objek { key: value }.', 400);
+    }
+    const ops = Object.entries(updates)
+      .filter(([key]) => allowedKeys.includes(key))
+      .map(([key, value]) => prisma.siteSetting.upsert({
+        where: { key },
+        update: { value: String(value) },
+        create: { key, value: String(value) },
+      }));
+    if (ops.length === 0) return errorResponse(res, 'Tidak ada key yang valid.', 400);
+    await prisma.$transaction(ops);
+
+    const rows = await prisma.siteSetting.findMany({ where: { key: { in: allowedKeys } } });
+    const settings = rows.reduce((acc, row) => { acc[row.key] = row.value; return acc; }, {});
+    return res.json({ success: true, data: settings, message: 'Pengaturan PPDB berhasil disimpan.' });
+  } catch (err) {
+    console.error('[PPDB/UpdateSettings]', err);
+    return errorResponse(res, 'Gagal menyimpan pengaturan PPDB.', 500);
+  }
+});
 
 // Dashboard statistik
 router.get('/admin/stats', ...adminViewAuth, ppdbAdminController.getStats);

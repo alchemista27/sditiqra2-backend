@@ -125,6 +125,7 @@ exports.getMe = async (req, res) => {
         where: { id },
         select: { id: true, name: true, email: true, phone: true },
       });
+      if (account) account.role = 'PARENT';
     } else {
       account = await prisma.user.findUnique({
         where: { id },
