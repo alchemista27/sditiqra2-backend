@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const prisma = require('../lib/prisma');
 const { successResponse, errorResponse } = require('../utils/response');
+const { updatePasswordCache } = require('../middleware/auth');
 
 /**
  * Buat JWT token
@@ -53,6 +54,7 @@ exports.login = async (req, res) => {
       name: account.name,
       role: accountType === 'user' ? account.role : 'PARENT',
       type: accountType,
+      pwdChangedAt: account.passwordChangedAt ? account.passwordChangedAt.getTime() : null,
     };
 
     const token = generateToken(tokenPayload);
@@ -102,11 +104,73 @@ exports.registerParent = async (req, res) => {
       name: parent.name,
       role: 'PARENT',
       type: 'parent',
+      pwdChangedAt: null, // Baru terdaftar, belum pernah ubah password
     });
 
     return successResponse(res, { token, user: parent }, 'Pendaftaran akun berhasil.', 201);
   } catch (error) {
     console.error('[Auth/RegisterParent]', error);
+    return errorResponse(res, 'Terjadi kesalahan server.', 500, error);
+  }
+};
+
+/**
+ * PUT /api/auth/change-password
+ * Mengubah password user yang sedang login (User atau Parent)
+ */
+exports.changePassword = async (req, res) => {
+  try {
+    const { id, type } = req.user;
+    const { oldPassword, newPassword } = req.body;
+
+    if (!oldPassword || !newPassword) {
+      return errorResponse(res, 'Password lama dan password baru wajib diisi.', 400);
+    }
+
+    if (newPassword.length < 8) {
+      return errorResponse(res, 'Password baru minimal 8 karakter.', 400);
+    }
+
+    // Ambil akun berdasarkan tipe (user atau parent)
+    let account;
+    if (type === 'parent') {
+      account = await prisma.parent.findUnique({ where: { id } });
+    } else {
+      account = await prisma.user.findUnique({ where: { id } });
+    }
+
+    if (!account) {
+      return errorResponse(res, 'Akun tidak ditemukan.', 404);
+    }
+
+    // Verifikasi password lama
+    const isOldPasswordValid = await bcrypt.compare(oldPassword, account.password);
+    if (!isOldPasswordValid) {
+      return errorResponse(res, 'Password lama salah.', 401);
+    }
+
+    // Cek setelah verifikasi agar user tidak mendapat info "sama" sebelum membuktikan password lama
+    if (oldPassword === newPassword) {
+      return errorResponse(res, 'Password baru tidak boleh sama dengan password lama.', 400);
+    }
+
+    // Hash password baru
+    const hashedNewPassword = await bcrypt.hash(newPassword, 12);
+
+    // Update password dan catat waktu perubahan
+    const now = new Date();
+    if (type === 'parent') {
+      await prisma.parent.update({ where: { id }, data: { password: hashedNewPassword, passwordChangedAt: now } });
+    } else {
+      await prisma.user.update({ where: { id }, data: { password: hashedNewPassword, passwordChangedAt: now } });
+    }
+
+    // Update cache agar request berikutnya langsung mendeteksi perubahan password tanpa race condition
+    updatePasswordCache(id, now.getTime());
+
+    return successResponse(res, { requireRelogin: true }, 'Password berhasil diubah. Silakan login ulang.');
+  } catch (error) {
+    console.error('[Auth/ChangePassword]', error);
     return errorResponse(res, 'Terjadi kesalahan server.', 500, error);
   }
 };

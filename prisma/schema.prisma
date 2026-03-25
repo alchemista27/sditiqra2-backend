@@ -23,14 +23,15 @@ enum Role {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  name      String
-  email     String   @unique
-  password  String
-  role      Role     @default(KARYAWAN)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                String    @id @default(cuid())
+  name              String
+  email             String    @unique
+  password          String
+  role              Role      @default(KARYAWAN)
+  isActive          Boolean   @default(true)
+  passwordChangedAt DateTime? // Waktu terakhir password diubah (untuk invalidasi token)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   // Relasi
   employee       Employee?
@@ -165,14 +166,15 @@ enum Gender {
 
 // Model orang tua / wali pendaftar (terpisah dari model User admin)
 model Parent {
-  id        String   @id @default(cuid())
-  name      String
-  email     String   @unique
-  password  String
-  phone     String?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                String    @id @default(cuid())
+  name              String
+  email             String    @unique
+  password          String
+  phone             String?
+  isActive          Boolean   @default(true)
+  passwordChangedAt DateTime? // Waktu terakhir password diubah (untuk invalidasi token)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   registrations Registration[]
 
