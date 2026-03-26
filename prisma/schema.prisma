@@ -16,9 +16,9 @@ datasource db {
 
 enum Role {
   SUPER_ADMIN
-  ADMIN_CMS
-  ADMIN_PPDB
   KEPALA_SEKOLAH
+  ADMIN_HUMAS
+  ADMIN_PERSONALIA
   KARYAWAN // Guru dan Staf
 }
 

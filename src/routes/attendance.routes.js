@@ -17,10 +17,10 @@ router.get('/my-logs', attendanceController.getMyLogs);
 router.get('/my-status', attendanceController.getMyStatus);
 
 // ─── ADMIN (Kepala Sekolah & Admin) ──────────────────────────
-router.put('/config', authorize('SUPER_ADMIN', 'KEPALA_SEKOLAH'), attendanceController.updateConfig);
-router.get('/logs/today', authorize('SUPER_ADMIN', 'KEPALA_SEKOLAH', 'ADMIN_CMS'), attendanceController.getAllLogsToday);
-router.get('/logs', authorize('SUPER_ADMIN', 'KEPALA_SEKOLAH', 'ADMIN_CMS'), attendanceController.getAllLogs);
-router.get('/logs/anomalies', authorize('SUPER_ADMIN', 'KEPALA_SEKOLAH', 'ADMIN_CMS'), attendanceController.getAnomalyLogs);
-router.get('/employees', authorize('SUPER_ADMIN', 'KEPALA_SEKOLAH', 'ADMIN_CMS'), attendanceController.getAllEmployees);
+router.put('/config', authorize('SUPER_ADMIN', 'KEPALA_SEKOLAH', 'ADMIN_PERSONALIA'), attendanceController.updateConfig);
+router.get('/logs/today', authorize('SUPER_ADMIN', 'KEPALA_SEKOLAH', 'ADMIN_PERSONALIA'), attendanceController.getAllLogsToday);
+router.get('/logs', authorize('SUPER_ADMIN', 'KEPALA_SEKOLAH', 'ADMIN_PERSONALIA'), attendanceController.getAllLogs);
+router.get('/logs/anomalies', authorize('SUPER_ADMIN', 'KEPALA_SEKOLAH', 'ADMIN_PERSONALIA'), attendanceController.getAnomalyLogs);
+router.get('/employees', authorize('SUPER_ADMIN', 'KEPALA_SEKOLAH', 'ADMIN_PERSONALIA'), attendanceController.getAllEmployees);
 
 module.exports = router;

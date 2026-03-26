@@ -133,7 +133,7 @@ const authenticate = async (req, res, next) => {
 
 /**
  * Middleware untuk membatasi akses berdasarkan Role.
- * Penggunaan: authorize('SUPER_ADMIN', 'ADMIN_CMS')
+ * Penggunaan: authorize('SUPER_ADMIN', 'ADMIN_HUMAS')
  */
 const authorize = (...roles) => {
   return (req, res, next) => {
