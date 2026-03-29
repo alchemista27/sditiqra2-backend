@@ -5,12 +5,12 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const USE_CLOUDINARY = Boolean(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET);
 
-// ─── PRODUCTION: Cloudinary Storage ──────────────────────────
+// ─── Cloudinary Storage ─────────────────────────────────────────
 let upload;
 
-if (IS_PRODUCTION) {
+if (USE_CLOUDINARY) {
   const { makeCloudinaryStorage } = require('./cloudinary');
 
   // Di Cloudinary, folder ditentukan berdasarkan fieldname

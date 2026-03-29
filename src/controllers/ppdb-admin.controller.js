@@ -251,9 +251,9 @@ exports.reviewRegistration = async (req, res) => {
     const registration = await prisma.registration.findUnique({ where: { id: req.params.id } });
     if (!registration) return errorResponse(res, 'Pendaftaran tidak ditemukan.', 404);
 
-    const allowedStatuses = ['FORM_SUBMITTED', 'ADMIN_REVIEW'];
+    const allowedStatuses = ['CLINIC_LETTER_UPLOADED', 'ADMIN_REVIEW'];
     if (!allowedStatuses.includes(registration.status)) {
-      return errorResponse(res, 'Status pendaftaran tidak memenuhi syarat untuk seleksi administrasi.', 400);
+      return errorResponse(res, 'Status pendaftaran tidak memenuhi syarat untuk seleksi administrasi (Siswa harus mengunggah surat klinik terlebih dahulu).', 400);
     }
 
     const updateData = {
@@ -597,8 +597,11 @@ exports.assignClass = async (req, res) => {
     const registration = await prisma.registration.findUnique({ where: { id: req.params.id } });
     if (!registration) return errorResponse(res, 'Pendaftaran tidak ditemukan.', 404);
 
-    if (registration.status !== 'OBSERVATION_DONE' || registration.observationResult !== 'PASSED') {
-      return errorResponse(res, 'Siswa hanya dapat diassign ke kelas jika lulus tahap observasi.', 400);
+    if (
+      !(registration.status === 'OBSERVATION_DONE' && registration.observationResult === 'PASSED') &&
+      registration.status !== 'ACCEPTED'
+    ) {
+      return errorResponse(res, 'Siswa hanya dapat diassign ke kelas jika lulus tahap observasi atau sudah diterima.', 400);
     }
 
     // Cek kapasitas kelas

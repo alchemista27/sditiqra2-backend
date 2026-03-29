@@ -23,6 +23,7 @@ const mediaController = require('../controllers/media.controller');
 const settingsController = require('../controllers/settings.controller');
 const menuController = require('../controllers/menu.controller');
 const galleryController = require('../controllers/gallery.controller');
+const instagramController = require('../controllers/instagram.controller');
 
 const cmsAdmin = ['SUPER_ADMIN', 'ADMIN_HUMAS'];
 
@@ -81,5 +82,17 @@ router.post('/menu', authenticate, authorize(...cmsAdmin), menuController.create
 router.put('/menu/reorder', authenticate, authorize(...cmsAdmin), menuController.reorder); // reorder HARUS sebelum /:id
 router.put('/menu/:id', authenticate, authorize(...cmsAdmin), menuController.update);
 router.delete('/menu/:id', authenticate, authorize(...cmsAdmin), menuController.remove);
+
+// ─── INSTAGRAM AUTO-POST (Make.com) ─────────────────────────────
+const verifyMakeSecret = (req, res, next) => {
+  const secret = req.headers['x-make-secret'];
+  if (secret !== process.env.MAKE_WEBHOOK_SECRET) {
+    return res.status(403).json({ message: 'Unauthorized' });
+  }
+  next();
+};
+
+router.put('/posts/:id/instagram-status', verifyMakeSecret, instagramController.updateInstagramStatus);
+router.post('/settings/instagram/test', authenticate, authorize(...cmsAdmin), instagramController.testConnection);
 
 module.exports = router;

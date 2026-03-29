@@ -2,6 +2,7 @@
 const prisma = require('../lib/prisma');
 const { successResponse, errorResponse, paginatedResponse } = require('../utils/response');
 const slugify = require('../utils/slugify');
+const { sendToInstagram } = require('../services/makecom.service');
 
 // Helper: data select untuk publik (exclude konten berat dari daftar)
 const postListSelect = {
@@ -107,6 +108,10 @@ exports.create = async (req, res) => {
       include: { author: { select: { id: true, name: true } }, category: true },
     });
 
+    if (status === 'PUBLISHED') {
+      sendToInstagram(post);
+    }
+
     return successResponse(res, post, 'Berita berhasil dibuat.', 201);
   } catch (error) {
     return errorResponse(res, 'Gagal membuat berita.', 500, error);
@@ -145,6 +150,10 @@ exports.update = async (req, res) => {
       },
       include: { author: { select: { id: true, name: true } }, category: true },
     });
+
+    if (status === 'PUBLISHED' && current.status !== 'PUBLISHED') {
+      sendToInstagram(updated);
+    }
 
     return successResponse(res, updated, 'Berita berhasil diperbarui.');
   } catch (error) {

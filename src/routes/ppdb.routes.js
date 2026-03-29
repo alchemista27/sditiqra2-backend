@@ -10,7 +10,8 @@ const { authenticate, authorize, authenticateParent } = require('../middleware/a
 const upload = require('../utils/upload');
 const prisma = require('../lib/prisma');
 const { generateClinicLetter } = require('../utils/generateClinicLetter');
-const { errorResponse } = require('../utils/response');
+const { errorResponse, successResponse } = require('../utils/response');
+const { generateClassRoster } = require('../utils/generateClassRoster');
 
 // ─── Konfigurasi Multer untuk upload file PPDB ───────────────
 
@@ -59,6 +60,7 @@ router.post('/academic-years',      authenticate, authorize('SUPER_ADMIN', 'ADMI
 router.put('/academic-years/:id',   authenticate, authorize('SUPER_ADMIN', 'ADMIN_HUMAS'), ayController.update);
 router.put('/academic-years/:id/active', authenticate, authorize('SUPER_ADMIN', 'ADMIN_HUMAS'), ayController.setActive);
 router.delete('/academic-years/:id', authenticate, authorize('SUPER_ADMIN', 'ADMIN_HUMAS'), ayController.remove);
+router.delete('/academic-years/:id/purge', authenticate, authorize('SUPER_ADMIN'), ayController.purge);
 
 
 // ═══════════════════════════════════════════════════════════════
@@ -88,7 +90,7 @@ router.get('/referral-letter', authenticateParent, async (req, res) => {
       where: {
         parentId,
         status: {
-          in: ['ADMIN_PASSED', 'CLINIC_LETTER_UPLOADED', 'OBSERVATION_SCHEDULED', 'OBSERVATION_DONE', 'ACCEPTED'],
+          in: ['FORM_SUBMITTED', 'CLINIC_LETTER_UPLOADED', 'ADMIN_REVIEW', 'ADMIN_PASSED', 'OBSERVATION_SCHEDULED', 'OBSERVATION_DONE', 'ACCEPTED'],
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -199,4 +201,37 @@ router.post('/admin/classrooms',        ...adminAuth, ppdbAdminController.create
 router.put('/admin/classrooms/:id',     ...adminAuth, ppdbAdminController.updateClassroom);
 router.delete('/admin/classrooms/:id',  ...adminAuth, ppdbAdminController.deleteClassroom);
 
+// Download PDF daftar siswa per kelas
+router.get('/admin/classrooms/:id/pdf', ...adminViewAuth, async (req, res) => {
+  try {
+    const classroom = await prisma.classroom.findUnique({
+      where: { id: req.params.id },
+    });
+    if (!classroom) return errorResponse(res, 'Kelas tidak ditemukan.', 404);
+
+    const students = await prisma.registration.findMany({
+      where: { classroomId: req.params.id },
+      orderBy: { studentName: 'asc' },
+      include: {
+        parent: { select: { name: true } },
+        academicYear: { select: { name: true } },
+      },
+    });
+
+    const siteSetting = await prisma.siteSetting.findFirst({ where: { key: 'site_name' } });
+    const siteName = siteSetting?.value || 'SD IT Iqra 2 Kota Bengkulu';
+
+    const pdfBuffer = await generateClassRoster(classroom, students, siteName);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="daftar-siswa-kelas-${classroom.name}.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    res.send(pdfBuffer);
+  } catch (err) {
+    console.error('[PPDB/ClassRosterPDF]', err);
+    return errorResponse(res, 'Gagal generate PDF daftar siswa.', 500);
+  }
+});
+
 module.exports = router;
+

@@ -99,3 +99,61 @@ exports.remove = async (req, res) => {
     errorResponse(res, 'Gagal menghapus tahun ajaran. Pastikan tidak ada data pendaftar pada tahun ini.', 500);
   }
 };
+
+/**
+ * DELETE /api/ppdb/academic-years/:id/purge
+ * Hapus tahun ajaran beserta SELURUH data pendaftar, berkas Cloudinary, kelas, dan slot observasi.
+ * Tindakan ini tidak dapat dibatalkan.
+ */
+exports.purge = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const year = await prisma.academicYear.findUnique({
+      where: { id },
+      include: {
+        registrations: true,
+        classrooms: true,
+        observationSlots: true,
+      },
+    });
+    if (!year) return errorResponse(res, 'Tahun ajaran tidak ditemukan.', 404);
+
+    // Kumpulkan semua URL Cloudinary dari registrasi
+    const { cloudinary } = require('../utils/cloudinary');
+    const cloudinaryIdsToDelete = [];
+    for (const reg of year.registrations) {
+      const fields = [
+        reg.paymentProof, reg.docPhoto, reg.docTkCert, reg.docBirthCert,
+        reg.docKartuKeluarga, reg.docKtpFather, reg.docKtpMother, reg.docClinicCert,
+      ];
+      for (const url of fields) {
+        if (!url) continue;
+        // Ekstrak publicId dari Cloudinary URL
+        const match = url.match(/\/upload\/(?:v\d+\/)?(.+?)(?:\.\w+)?$/);
+        if (match) cloudinaryIdsToDelete.push(match[1]);
+      }
+    }
+
+    // Hapus file dari Cloudinary (batch 100 sekaligus)
+    const chunkSize = 100;
+    for (let i = 0; i < cloudinaryIdsToDelete.length; i += chunkSize) {
+      const chunk = cloudinaryIdsToDelete.slice(i, i + chunkSize);
+      await cloudinary.api.delete_resources(chunk, { resource_type: 'image' }).catch(() => {});
+    }
+
+    // Hapus semua data terkait dari database dalam satu transaksi
+    await prisma.$transaction([
+      prisma.registration.deleteMany({ where: { academicYearId: id } }),
+      prisma.observationSlot.deleteMany({ where: { academicYearId: id } }),
+      prisma.classroom.deleteMany({ where: { academicYearId: id } }),
+      prisma.academicYear.delete({ where: { id } }),
+    ]);
+
+    successResponse(res, null, `Tahun ajaran "${year.name}" dan seluruh datanya berhasil dihapus permanen.`);
+  } catch (err) {
+    console.error('[AY/Purge]', err);
+    errorResponse(res, 'Gagal menghapus data. ' + err.message, 500);
+  }
+};
+

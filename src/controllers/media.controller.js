@@ -61,50 +61,51 @@ exports.upload = async (req, res) => {
  */
 exports.getAll = async (req, res) => {
   try {
-    const { folder = 'sditiqra2', next_cursor, max_results = 30 } = req.query;
+    const { page = 1, limit = 30, folder } = req.query;
+    const skip = (Number(page) - 1) * Number(limit);
 
-    const result = await cloudinary.api.resources({
-      type: 'upload',
-      prefix: folder,
-      resource_type: 'image',
-      max_results: Number(max_results),
-      next_cursor: next_cursor || undefined,
-    });
+    // Selalu query DB dulu — filter berdasarkan role uploader
+    const allowedRoles = ['SUPER_ADMIN', 'ADMIN_HUMAS'];
+    const where = {
+      uploadedBy: { role: { in: allowedRoles } },
+      ...(folder ? { path: { startsWith: `sditiqra2/${folder}` } } : {}),
+    };
 
-    const items = result.resources.map(r => ({
-      publicId: r.public_id,
-      url: r.secure_url,
-      format: r.format,
-      width: r.width,
-      height: r.height,
-      bytes: r.bytes,
-      createdAt: r.created_at,
-      folder: r.folder,
-      displayName: r.display_name || r.public_id.split('/').pop(),
+    const [total, media] = await Promise.all([
+      prisma.media.count({ where }),
+      prisma.media.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: Number(limit),
+        include: {
+          uploadedBy: { select: { name: true, role: true } },
+        },
+      }),
+    ]);
+
+    const items = media.map(m => ({
+      id: m.id,
+      publicId: m.cloudinaryId || m.path,
+      url: m.cloudinaryUrl || m.url,
+      originalName: m.originalName,
+      mimeType: m.mimeType,
+      bytes: m.size,
+      createdAt: m.createdAt,
+      uploadedBy: m.uploadedBy?.name || null,
+      displayName: m.originalName || m.cloudinaryId?.split('/').pop(),
     }));
 
     return res.json({
       success: true,
       data: items,
-      nextCursor: result.next_cursor || null,
-      totalCount: result.total_count || items.length,
+      pagination: { page: Number(page), limit: Number(limit), total, totalPages: Math.ceil(total / Number(limit)) },
     });
   } catch (error) {
-    // Fallback: jika Cloudinary API credentials tidak diset, query DB
-    if (error.error?.http_code === 401 || error.name === 'Error') {
-      try {
-        const { page = 1, limit = 30 } = req.query;
-        const skip = (Number(page) - 1) * Number(limit);
-        const [total, media] = await Promise.all([
-          prisma.media.count(),
-          prisma.media.findMany({ orderBy: { createdAt: 'desc' }, skip, take: Number(limit) }),
-        ]);
-        return res.json({ success: true, data: media, pagination: { page: Number(page), total, totalPages: Math.ceil(total / Number(limit)) } });
-      } catch { /* ignore */ }
-    }
-    return errorResponse(res, 'Gagal mengambil media dari Cloudinary.', 500, error);
+    return errorResponse(res, 'Gagal mengambil media.', 500, error);
   }
 };
+
 
 /**
  * GET /api/cms/media/folders — daftar folder

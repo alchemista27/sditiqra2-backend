@@ -403,7 +403,7 @@ exports.submitForm = async (req, res) => {
       },
     });
 
-    return successResponse(res, updated, 'Formulir berhasil disubmit! Admin akan melakukan seleksi administrasi.');
+    return successResponse(res, updated, 'Formulir berhasil disubmit! Silakan unduh dan cetak surat pengantar klinik.');
   } catch (err) {
     console.error('[PPDB/SubmitForm]', err);
     return errorResponse(res, 'Terjadi kesalahan server.', 500);
@@ -418,14 +418,15 @@ exports.submitForm = async (req, res) => {
 /**
  * POST /api/ppdb/clinic-cert/upload
  * Orang tua upload surat keterangan kesehatan dari klinik IMC.
- * Hanya bisa jika status = ADMIN_PASSED.
+ * Surat klinik diupload sebelum seleksi administrasi (status FORM_SUBMITTED).
  */
 exports.uploadClinicCert = async (req, res) => {
   try {
     const parentId = req.parent.id;
 
     const registration = await prisma.registration.findFirst({
-      where: { parentId, status: 'ADMIN_PASSED' },
+      // Ubahan: Dulu ADMIN_PASSED, sekarang FORM_SUBMITTED
+      where: { parentId, status: 'FORM_SUBMITTED' },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -501,7 +502,7 @@ exports.getAvailableSlots = async (req, res) => {
 /**
  * POST /api/ppdb/observation-slots/book
  * Orang tua pilih / booking jadwal observasi.
- * Hanya bisa jika status = CLINIC_LETTER_UPLOADED.
+ * Hanya bisa jika status = ADMIN_PASSED. (Setelah lolos seleksi dokumen+klinik)
  */
 exports.bookObservationSlot = async (req, res) => {
   try {
@@ -511,7 +512,7 @@ exports.bookObservationSlot = async (req, res) => {
     if (!slotId) return errorResponse(res, 'ID jadwal observasi wajib disertakan.', 400);
 
     const registration = await prisma.registration.findFirst({
-      where: { parentId, status: 'CLINIC_LETTER_UPLOADED' },
+      where: { parentId, status: 'ADMIN_PASSED' },
       orderBy: { createdAt: 'desc' },
     });
 
