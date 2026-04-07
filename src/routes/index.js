@@ -9,6 +9,7 @@ const attendanceRoutes = require('./attendance.routes');
 const holidayRoutes = require('./holiday.routes');
 const leaveRoutes = require('./leave.routes');
 const reportRoutes = require('./report.routes');
+const userRoutes = require('./user.routes');
 
 // Health check
 router.get('/health', (req, res) => {
@@ -26,6 +27,7 @@ router.use('/attendance', attendanceRoutes);
 router.use('/holidays', holidayRoutes);
 router.use('/leaves', leaveRoutes);
 router.use('/reports', reportRoutes);
+router.use('/users', userRoutes);
 
 module.exports = router;
 
